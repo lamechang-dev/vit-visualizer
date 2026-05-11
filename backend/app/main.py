@@ -16,6 +16,8 @@ model.eval()
 
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
+    # (H, W, C) → (C, H, W) に変換
+    # つまり [224][224][3] → [3, 224, 224]
     transforms.ToTensor(),
 ])
 
@@ -23,6 +25,8 @@ transform = transforms.Compose([
 async def predict(file: UploadFile = File(...)):
     contents = await file.read()
 
+    # height × width × channelの構造を持つ画像を読み込む
+    # [height][width][channel] = [224][224][3]
     image = Image.open(io.BytesIO(contents)).convert("RGB")
 
     x = transform(image).unsqueeze(0)
