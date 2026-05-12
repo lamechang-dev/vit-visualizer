@@ -18,9 +18,11 @@ model.eval()
 print(model.head)
 
 transform = transforms.Compose([
+    # モデルが要求するサイズにリサイズする
     transforms.Resize((224, 224)),
     # (H, W, C) → (C, H, W) に変換
     # つまり [224][224][3] → [3, 224, 224]
+    # 画像をテンソルに変換する
     transforms.ToTensor(),
 ])
 
@@ -29,6 +31,9 @@ async def predict(file: UploadFile = File(...)):
     contents = await file.read()
 
     # height × width × channelの構造を持つ画像を読み込む
+    # channel 0 → R（赤の強さ）: 0〜255
+    # channel 1 → G（緑の強さ）: 0〜255
+    # channel 2 → B（青の強さ）: 0〜255
     # [height][width][channel] = [224][224][3]
     image = Image.open(io.BytesIO(contents)).convert("RGB")
 
@@ -36,16 +41,18 @@ async def predict(file: UploadFile = File(...)):
     # <PIL.Image.Image image mode=RGB size=844x563 at 0x10E50F4D0>
 
     # [3, 224, 224] → [1, 3, 224, 224] に変換
+    # ViTはバッチ(複数枚)で入力を受け取る設計
+    # 1枚だけ渡す場合でも「1枚のバッチ」として包んであげる必要あり
     x = transform(image).unsqueeze(0)
 
     # torch.Size([1, 3, 224, 224])
     print(x.shape)
 
-    # y = logits logitsはまだ確率ではない
+    # y => logits (logitsはまだ確率ではない)
     # 合計1じゃない
     # マイナスもある
     # 何でもあり
-    # logts
+    # logits =>
         # dog: 12.3
         # cat: 2.1
         # car: -4.5
