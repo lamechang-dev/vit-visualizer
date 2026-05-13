@@ -3,6 +3,7 @@ from PIL import Image
 import io
 import timm
 import torch
+import torch.nn.functional as F
 from torchvision import transforms
 
 app = FastAPI()
@@ -25,6 +26,19 @@ transform = transforms.Compose([
     # 画像をテンソルに変換する
     transforms.ToTensor(),
 ])
+
+def get_embedding(image: Image.Image) -> torch.Tensor:
+    # [3, 224, 224] → [1, 3, 224, 224]
+    x = transform(image).unsqueeze(0)
+
+    with torch.no_grad():
+        # Encoder出力
+        features = model.forward_features(x)
+
+    # CLS token取り出し
+    cls = features[:, 0]
+
+    return cls
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
@@ -63,12 +77,25 @@ async def predict(file: UploadFile = File(...)):
         # cat: 0.001
         # car: 0.000
     with torch.no_grad():
+        # patch embedding => transformer encoder => CLS token => Linear head => logits
         y = model(x)
 
 
-    print(y.shape)
+    # head直前で止める。Encoderの出力のこと
+    # Encoderの中で Self-Attention & MLP & LayerNormが繰り替えされる
+    # このfeaturesからCLSを取り出して、MLP Headで分類する
+    # [1, 197, 768]
+    # 197 => 197個のパッチ(196 + 1(CLS token))
+    features = model.forward_features(x)
+    print("features.shape:", features.shape)
+    cls = features[0, 0]
+    print("cls.shape:", cls.shape)
+    partial_cls = cls.tolist()[:10]
+    print(partial_cls)
+
+    # print(y.shape)
     # torch.Size([1, 1000])
-    print(y)
+    # print(y)
     # tensor([[ 4.0559e-02,  1.1820e-01,  6.7152e-01,  2.2492e-01,  2.7555e-01,...
     
     # 一番logitsが大きいものを選ぶ
@@ -80,4 +107,24 @@ async def predict(file: UploadFile = File(...)):
 
     return {
         "prediction": pred
+    }
+
+@app.post("/similarity")
+async def similarity(
+    file1: UploadFile = File(...),
+    file2: UploadFile = File(...)
+):
+    contents1 = await file1.read()
+    contents2 = await file2.read()
+
+    image1 = Image.open(io.BytesIO(contents1)).convert("RGB")
+    image2 = Image.open(io.BytesIO(contents2)).convert("RGB")
+
+    emb1 = get_embedding(image1)
+    emb2 = get_embedding(image2)
+
+    similarity = F.cosine_similarity(emb1, emb2)
+
+    return {
+        "similarity": similarity.item()
     }
