@@ -162,6 +162,17 @@ cifar10 = datasets.CIFAR10(root=_DATA_DIR, train=False, download=True)
 
 print(cifar10[0])
 
+def get_clip_embedding(image: Image.Image) -> torch.Tensor:
+    x = clip_preprocess(image).unsqueeze(0)
+
+    with torch.no_grad():
+        emb = clip_model.encode_image(x)
+
+        # cosine similarity用に正規化
+        emb = F.normalize(emb, dim=-1)
+
+    return emb
+
 # 画像をembeddingに変換する
 def _load_or_compute_embeddings() -> tuple[np.ndarray, np.ndarray]:
     os.makedirs(_DATA_DIR, exist_ok=True)
@@ -229,3 +240,55 @@ async def clip_search(query: str, top_k: int = 9):
         })
 
     return {"query": query, "results": results}
+
+@app.post("/similar-images")
+async def similar_images(
+    file: UploadFile = File(...),
+    top_k: int = 5
+):
+    contents = await file.read()
+
+    image = Image.open(io.BytesIO(contents)).convert("RGB")
+
+    # アップロード画像のembedding
+    query_emb = get_clip_embedding(image)
+
+    # shape:
+    # (500, 512) @ (512, 1)
+    # => (500, 1)
+    scores = (
+        _cifar10_embeddings
+        @ query_emb.numpy().T
+    ).squeeze()
+
+    # 類似度高い順
+    top_indices = np.argsort(scores)[::-1][:top_k]
+
+    results = []
+
+    for idx in top_indices:
+        img_pil, label = cifar10[int(idx)]
+
+        # 見やすく拡大
+        img_display = img_pil.resize(
+            (128, 128),
+            Image.Resampling.NEAREST
+        )
+
+        # base64化
+        buf = io.BytesIO()
+        img_display.save(buf, format="PNG")
+
+        img_b64 = base64.b64encode(
+            buf.getvalue()
+        ).decode()
+
+        results.append({
+            "image": f"data:image/png;base64,{img_b64}",
+            "label": CIFAR10_CLASSES[label],
+            "score": float(scores[idx]),
+        })
+
+    return {
+        "results": results
+    }
