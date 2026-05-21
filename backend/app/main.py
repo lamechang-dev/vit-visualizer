@@ -8,9 +8,14 @@ import torch.nn.functional as F
 from torchvision import transforms
 import torchvision.datasets as datasets
 import open_clip
-import numpy as np
 import base64
 import os
+import cv2
+from torchvision.models import ResNet18_Weights
+
+IMAGENET_LABELS = (
+    ResNet18_Weights.IMAGENET1K_V1.meta["categories"]
+)
 
 app = FastAPI()
 
@@ -23,10 +28,17 @@ app.add_middleware(
 
 # --- ViT モデル ---
 
+# patch16なので、16x16のパッチに分割
+# 224画像なら、224/16 = 14x14のパッチに分割
+# 14 x 14 = 196 patch
+# 各パッチは16 x 16 x 3 = 768のベクトルになる
 model = timm.create_model(
     "vit_base_patch16_224",
     pretrained=True
 )
+
+for block in model.blocks:
+    block.attn.fused_attn = False
 
 model.eval()
 
@@ -43,14 +55,15 @@ transform = transforms.Compose([
 ])
 
 def get_embedding(image: Image.Image) -> torch.Tensor:
-    # [3, 224, 224] → [1, 3, 224, 224]
     x = transform(image).unsqueeze(0)
 
     with torch.no_grad():
         # Encoder出力
+        # [1, 197, 768]
         features = model.forward_features(x)
 
     # CLS token取り出し
+    # [1, 197, 768] => [1, 768]
     cls = features[:, 0]
 
     return cls
@@ -73,54 +86,48 @@ async def predict(file: UploadFile = File(...)):
     # ViTはバッチ(複数枚)で入力を受け取る設計
     # 1枚だけ渡す場合でも「1枚のバッチ」として包んであげる必要あり
     x = transform(image).unsqueeze(0)
-
     # torch.Size([1, 3, 224, 224])
     print(x.shape)
 
-    # y => logits (logitsはまだ確率ではない)
-    # 合計1じゃない
-    # マイナスもある
-    # 何でもあり
+    # logitsは合計1じゃない。マイナスもある。何でもあり得る。
     # logits =>
         # dog: 12.3
         # cat: 2.1
         # car: -4.5
-    # logitsを確率に変換する
-        # softmaxを使う
-        # softmax(logits)
-        # dog: 0.999
-        # cat: 0.001
-        # car: 0.000
     with torch.no_grad():
         # patch embedding => transformer encoder => CLS token => Linear head => logits
-        y = model(x)
+        # [1, 1000]
+        logits: torch.Tensor = model(x)
 
 
-    # head直前で止める。Encoderの出力のこと
+    # forward_features: head直前で止める。Encoderの出力を取得する。
     # Encoderの中で Self-Attention & MLP & LayerNormが繰り替えされる
     # このfeaturesからCLSを取り出して、MLP Headで分類する
+    features = model.forward_features(x)
     # [1, 197, 768]
     # 197 => 197個のパッチ(196 + 1(CLS token))
-    features = model.forward_features(x)
     print("features.shape:", features.shape)
     cls = features[0, 0]
+    # [768]
     print("cls.shape:", cls.shape)
-    partial_cls = cls.tolist()[:10]
-    print(partial_cls)
 
-    # print(y.shape)
-    # torch.Size([1, 1000])
-    # print(y)
-    # tensor([[ 4.0559e-02,  1.1820e-01,  6.7152e-01,  2.2492e-01,  2.7555e-01,...
+    # 確率のトップ10のくらすIDと確率を表示
+    # softmax(): 確率分布に変換
+    softmax = logits.softmax(dim=-1)
+    topk = softmax[0].topk(10)
+    indices = topk.indices.tolist()
+    values = topk.values.tolist()
+    print("logits トップ10:", indices, values)
 
     # 一番logitsが大きいものを選ぶ
     # dog: 12.3
     # cat: 2.1
     # car: -4.5
     # なのでdogを選ぶ
-    pred = y.argmax().item()
+    pred = IMAGENET_LABELS[logits.argmax().item()]
 
     return {
+        "prediction_id": logits.argmax().item(),
         "prediction": pred
     }
 
@@ -159,7 +166,7 @@ clip_model.eval()
 CIFAR10_CLASSES = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
 
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "../../data")
-_CACHE_PATH = os.path.join(_DATA_DIR, "cifar10_clip_embeddings.npz")
+_CACHE_PATH = os.path.join(_DATA_DIR, "cifar10_clip_embeddings.pt")
 _NUM_IMAGES = 500  # テストセット先頭500枚を使用
 
 # 画像 + ラベルのセット
@@ -168,8 +175,11 @@ _NUM_IMAGES = 500  # テストセット先頭500枚を使用
 
 cifar10 = datasets.CIFAR10(root=_DATA_DIR, train=False, download=True)
 
+(image, label) = cifar10[0]
 print(cifar10[0])
 
+# input: [3, 224, 224]
+# output: [1, 512]
 def get_clip_embedding(image: Image.Image) -> torch.Tensor:
     x = clip_preprocess(image).unsqueeze(0)
 
@@ -182,11 +192,11 @@ def get_clip_embedding(image: Image.Image) -> torch.Tensor:
     return emb
 
 # 画像をembeddingに変換する
-def _load_or_compute_embeddings() -> tuple[np.ndarray, np.ndarray]:
+def _load_or_compute_embeddings() -> tuple[torch.Tensor, torch.Tensor]:
     os.makedirs(_DATA_DIR, exist_ok=True)
 
     if os.path.exists(_CACHE_PATH):
-        data = np.load(_CACHE_PATH)
+        data = torch.load(_CACHE_PATH, weights_only=True)
         print(f"CLIP埋め込みをキャッシュから読み込みました ({len(data['labels'])}枚)")
         return data["embeddings"], data["labels"]
 
@@ -195,7 +205,7 @@ def _load_or_compute_embeddings() -> tuple[np.ndarray, np.ndarray]:
     batch_size = 32
 
     for i in range(0, _NUM_IMAGES, batch_size):
-        # 1バッチ分の画像をCLIPの前処理にかけてスタック
+        # 1バッチ分の画像をCLIPの前処理にかけてスタック(cifar10[j][0]は画像)
         batch = [clip_preprocess(cifar10[j][0]) for j in range(i, min(i + batch_size, _NUM_IMAGES))]
         batch_tensor = torch.stack(batch)
         with torch.no_grad():
@@ -204,13 +214,14 @@ def _load_or_compute_embeddings() -> tuple[np.ndarray, np.ndarray]:
             embs = clip_model.encode_image(batch_tensor)
             # コサイン類似度のためにL2正規化
             embs = F.normalize(embs, dim=-1)
-        all_embs.append(embs.numpy())
+
+        all_embs.append(embs)
         print(f"  {min(i + batch_size, _NUM_IMAGES)}/{_NUM_IMAGES}枚完了")
 
-    embeddings = np.concatenate(all_embs, axis=0)  # shape: (500, 512)
-    labels = np.array([cifar10[i][1] for i in range(_NUM_IMAGES)])
+    embeddings = torch.cat(all_embs, dim=0)  # shape: (500, 512)
+    labels = torch.tensor([cifar10[i][1] for i in range(_NUM_IMAGES)])
 
-    np.savez(_CACHE_PATH, embeddings=embeddings, labels=labels)
+    torch.save({"embeddings": embeddings, "labels": labels}, _CACHE_PATH)
     print("CLIP埋め込みをキャッシュに保存しました")
     return embeddings, labels
 
@@ -228,10 +239,12 @@ async def clip_search(query: str, top_k: int = 9):
     # 全画像との内積 = L2正規化済みなのでコサイン類似度と等価
     # shape: (500, 512) @ (512, 1) = (500, 1)
     # 500画像とそれぞれの検索文の類似度
-    scores = (_cifar10_embeddings @ text_emb.numpy().T).squeeze()
+    # .Tで転置
+    # squeezeで長さ1の次元を消す
+    scores = (_cifar10_embeddings @ text_emb.T).squeeze()
 
-     # 類似度が高い順にソートして、上位k個を取得
-    top_indices = np.argsort(scores)[::-1][:top_k]
+    # 類似度が高い順にソートして、上位k個を取得
+    top_indices = torch.sort(scores, descending=True)[1][:top_k]
 
     results = []
     for idx in top_indices:
@@ -266,11 +279,11 @@ async def similar_images(
     # => (500, 1)
     scores = (
         _cifar10_embeddings
-        @ query_emb.numpy().T
+        @ query_emb.T
     ).squeeze()
 
     # 類似度高い順
-    top_indices = np.argsort(scores)[::-1][:top_k]
+    top_indices = torch.argsort(scores, descending=True)[:top_k]
 
     results = []
 
