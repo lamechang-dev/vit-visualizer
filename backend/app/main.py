@@ -32,6 +32,9 @@ app.add_middleware(
 # 224画像なら、224/16 = 14x14のパッチに分割
 # 14 x 14 = 196 patch
 # 各パッチは16 x 16 x 3 = 768のベクトルになる
+# 1000クラス分類のモデル。ImageNetの1000クラス分類モデル。
+# pretrained=True: ImageNetの重みを使用する
+# pretrained=Falseだった場合は、ランダムに初期化されたモデルが作成される。ImageNet関連の知識はなし
 model = timm.create_model(
     "vit_base_patch16_224",
     pretrained=True
@@ -55,6 +58,7 @@ transform = transforms.Compose([
 ])
 
 def get_embedding(image: Image.Image) -> torch.Tensor:
+    # [3, 224, 224] → [1, 3, 224, 224] に変換
     x = transform(image).unsqueeze(0)
 
     with torch.no_grad():
