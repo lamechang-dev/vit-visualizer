@@ -3,6 +3,7 @@ import torch
 from torchvision import transforms
 from torchvision.models import ResNet18_Weights
 import open_clip
+from app.utils import device
 
 IMAGENET_LABELS = (
     ResNet18_Weights.IMAGENET1K_V1.meta["categories"]
@@ -26,6 +27,23 @@ for block in model.blocks:
     block.attn.fused_attn = False
 
 model.eval()
+
+cifar10_model = timm.create_model(
+    "vit_tiny_patch16_224",
+    pretrained=False,
+    num_classes=10
+)
+
+cifar10_model.load_state_dict(
+    torch.load(
+        "cifar10_vit_tiny.pt",
+        map_location=device
+    )
+)
+
+cifar10_model = cifar10_model.to(device)
+
+cifar10_model.eval()
 
 # Linear(in_features=768, out_features=1000, bias=True)
 print(model.head)

@@ -5,8 +5,9 @@ import io
 import torch
 import torch.nn.functional as F
 import base64
-from app.model import model, transform, IMAGENET_LABELS, clip_model, clip_tokenizer, CIFAR10_CLASSES
+from app.model import cifar10_model, model, transform, IMAGENET_LABELS, clip_model, clip_tokenizer, CIFAR10_CLASSES
 from app.inference import get_embedding, get_clip_embedding, cifar10, _cifar10_embeddings
+from app.utils import device
 
 app = FastAPI()
 
@@ -78,6 +79,46 @@ async def predict(file: UploadFile = File(...)):
     return {
         "prediction_id": logits.argmax().item(),
         "prediction": pred
+    }
+
+@app.post("/predict-cifar10")
+async def predict_cifar10(
+    file: UploadFile = File(...)
+):
+    contents = await file.read()
+
+    image = Image.open(
+        io.BytesIO(contents)
+    ).convert("RGB")
+
+    x = transform(image).unsqueeze(0).to(device)
+
+    with torch.no_grad():
+        logits = cifar10_model(x)
+
+    print("logits.shape:", logits.shape)
+    # [1, 10]
+
+    probs = logits.softmax(dim=-1)
+
+    topk = probs[0].topk(10)
+
+    indices = topk.indices.tolist()
+    values = topk.values.tolist()
+
+    print("top10:", indices, values)
+
+    pred_id = logits.argmax(dim=-1).item()
+
+    pred_label = CIFAR10_CLASSES[pred_id]
+
+    return {
+        "prediction_id": pred_id,
+        "prediction": pred_label,
+        "probabilities": {
+            CIFAR10_CLASSES[i]: float(probs[0][i])
+            for i in range(10)
+        }
     }
 
 @app.post("/similarity")
