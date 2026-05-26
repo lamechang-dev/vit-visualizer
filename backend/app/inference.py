@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from PIL import Image
 import torchvision.datasets as datasets
 from app.model import model, transform, clip_model, clip_preprocess
+from app.utils import device
 
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "../../data")
 _CACHE_PATH = os.path.join(_DATA_DIR, "cifar10_clip_embeddings.pt")
@@ -36,7 +37,7 @@ def get_embedding(image: Image.Image) -> torch.Tensor:
 # input: [3, 224, 224]
 # output: [1, 512]
 def get_clip_embedding(image: Image.Image) -> torch.Tensor:
-    x = clip_preprocess(image).unsqueeze(0)
+    x = clip_preprocess(image).unsqueeze(0).to(device)
 
     with torch.no_grad():
         emb = clip_model.encode_image(x)

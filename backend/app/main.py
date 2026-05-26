@@ -22,6 +22,8 @@ app.add_middleware(
 async def predict(file: UploadFile = File(...)):
     contents = await file.read()
 
+    print("device:", device)
+
     # height × width × channelの構造を持つ画像を読み込む
     # channel 0 → R（赤の強さ）: 0〜255
     # channel 1 → G（緑の強さ）: 0〜255
@@ -141,6 +143,90 @@ async def similarity(
         "similarity": similarity.item()
     }
 
+@app.post("/multi-label")
+async def multi_label(
+    file: UploadFile = File(...),
+    top_k: int = 5
+):
+    CANDIDATE_LABELS = [
+        "dog",
+        "cat",
+        "car",
+        "truck",
+        "bird",
+        "horse",
+        "frog",
+        "ship",
+        "airplane",
+        "grass",
+        "tree",
+        "person",
+        "road",
+        "sky",
+        "building",
+    ]
+
+    contents = await file.read()
+
+    image = Image.open(
+        io.BytesIO(contents)
+    ).convert("RGB")
+
+    # -------------------------
+    # 画像embedding
+    # -------------------------
+    image_emb = get_clip_embedding(image).to(device)
+    # shape: (1, 512)
+
+    # -------------------------
+    # テキストembedding
+    # -------------------------
+    tokens = clip_tokenizer(
+        CANDIDATE_LABELS
+    ).to(device)
+
+    with torch.no_grad():
+        text_embs = clip_model.encode_text(tokens)
+
+    # L2 normalize
+    text_embs = F.normalize(
+        text_embs,
+        dim=-1
+    )
+    # shape: (N, 512)
+
+    # -------------------------
+    # cosine similarity
+    # -------------------------
+    scores = (
+        image_emb
+        @ text_embs.T
+    ).squeeze(0)
+
+    # shape: (N)
+
+    # -------------------------
+    # top-k
+    # -------------------------
+    top_scores, top_indices = torch.topk(
+        scores,
+        k=min(top_k, len(CANDIDATE_LABELS))
+    )
+
+    results = []
+
+    for score, idx in zip(
+        top_scores,
+        top_indices
+    ):
+        results.append({
+            "label": CANDIDATE_LABELS[int(idx)],
+            "score": float(score),
+        })
+
+    return {
+        "predictions": results
+    }
 
 @app.get("/clip-search")
 async def clip_search(query: str, top_k: int = 9):

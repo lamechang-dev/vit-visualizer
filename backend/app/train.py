@@ -6,8 +6,6 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from app.utils import device
 
-print("device:", device)
-
 # モデル
 model = timm.create_model(
     "vit_tiny_patch16_224",

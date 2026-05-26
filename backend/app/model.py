@@ -68,4 +68,6 @@ clip_model, _, clip_preprocess = open_clip.create_model_and_transforms("ViT-B-32
 clip_tokenizer = open_clip.get_tokenizer("ViT-B-32")
 clip_model.eval()
 
+clip_model = clip_model.to(device)
+
 CIFAR10_CLASSES = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
