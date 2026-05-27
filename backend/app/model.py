@@ -4,6 +4,10 @@ from torchvision import transforms
 from torchvision.models import ResNet18_Weights
 import open_clip
 from app.utils import device
+from transformers import (
+    AutoProcessor,
+    AutoModelForZeroShotObjectDetection
+)
 
 IMAGENET_LABELS = (
     ResNet18_Weights.IMAGENET1K_V1.meta["categories"]
@@ -71,3 +75,27 @@ clip_model.eval()
 clip_model = clip_model.to(device)
 
 CIFAR10_CLASSES = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
+
+# --- Zero-Shot Object Detection モデル ---
+# Grouding DINOは、物体検出モデル。画像中にある物体を検出する。
+# 基本的に text-guided object detectionという、テキストを入力として物体を検出するモデル。
+# なので事前にテキストをembeddingに変換する必要がある。
+# YOLOは内部的にgog cat などのクラスを持っているが、Grouding DINOは持っていない。
+
+GROUNDING_DINO_MODEL_ID = (
+    "IDEA-Research/grounding-dino-base"
+)
+
+grounding_processor = (
+    AutoProcessor.from_pretrained(
+        GROUNDING_DINO_MODEL_ID
+    )
+)
+
+grounding_model = (
+    AutoModelForZeroShotObjectDetection
+    .from_pretrained(
+        GROUNDING_DINO_MODEL_ID
+    )
+    .to(device)
+)

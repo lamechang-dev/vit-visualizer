@@ -8,6 +8,7 @@ import base64
 from app.model import cifar10_model, model, transform, IMAGENET_LABELS, clip_model, clip_tokenizer, CIFAR10_CLASSES
 from app.inference import get_embedding, get_clip_embedding, cifar10, _cifar10_embeddings
 from app.utils import device
+from app.model import grounding_processor, grounding_model
 
 app = FastAPI()
 
@@ -175,7 +176,7 @@ async def multi_label(
     # -------------------------
     # 画像embedding
     # -------------------------
-    image_emb = get_clip_embedding(image).to(device)
+    image_emb = get_clip_embedding(image)
     # shape: (1, 512)
 
     # -------------------------
@@ -312,4 +313,73 @@ async def similar_images(
 
     return {
         "results": results
+    }
+
+
+@app.post("/detect")
+async def detect(
+    file: UploadFile = File(...),
+    labels: str = "dog . cat . person"
+):
+    contents = await file.read()
+
+    image = Image.open(
+        io.BytesIO(contents)
+    ).convert("RGB")
+
+    # -------------------------
+    # preprocess
+    # -------------------------
+    # 画像: resize => normalize => to tensor
+    # テキスト: tokenizer => to tensor
+    # return_tensors="pt" => PyTorchのテンソルに変換して、の指定
+    inputs = grounding_processor(
+        images=image,
+        text=labels,
+        return_tensors="pt"
+    ).to(device)
+
+    # -------------------------
+    # inference
+    # -------------------------
+    with torch.no_grad():
+        # ViT patch embedding
+        # text => Transformer token embedding
+        # その後： Cross Attention
+        outputs = grounding_model(**inputs)
+
+    # -------------------------
+    # post process
+    # -------------------------
+    results = (
+        grounding_processor
+        .post_process_grounded_object_detection(
+            outputs,
+            inputs.input_ids,
+            threshold=0.3,
+            text_threshold=0.3,
+            target_sizes=[image.size[::-1]]
+        )
+    )
+
+    result = results[0]
+
+    detections = []
+
+    for score, label, box in zip(
+        result["scores"],
+        result["labels"],
+        result["boxes"]
+    ):
+        detections.append({
+            "label": label,
+            "score": float(score),
+            "box": [
+                float(v)
+                for v in box.tolist()
+            ]
+        })
+
+    return {
+        "detections": detections
     }
