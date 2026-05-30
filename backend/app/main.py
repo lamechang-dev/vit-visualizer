@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 import io
@@ -319,13 +319,16 @@ async def similar_images(
 @app.post("/detect")
 async def detect(
     file: UploadFile = File(...),
-    labels: str = "dog . cat . person"
+    labels: str = Form("dog . cat . person .")
 ):
     contents = await file.read()
 
     image = Image.open(
         io.BytesIO(contents)
     ).convert("RGB")
+
+    if not labels.rstrip().endswith("."):
+        labels = labels.rstrip() + " ."
 
     # -------------------------
     # preprocess
