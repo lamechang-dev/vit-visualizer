@@ -54,7 +54,7 @@ def _load_or_compute_embeddings() -> tuple[torch.Tensor, torch.Tensor]:
     if os.path.exists(_CACHE_PATH):
         data = torch.load(_CACHE_PATH, weights_only=True)
         print(f"CLIP埋め込みをキャッシュから読み込みました ({len(data['labels'])}枚)")
-        return data["embeddings"], data["labels"]
+        return data["embeddings"].to(device), data["labels"]
 
     print(f"CIFAR-10の{_NUM_IMAGES}枚についてCLIP埋め込みを計算中...")
     all_embs = []
@@ -63,7 +63,7 @@ def _load_or_compute_embeddings() -> tuple[torch.Tensor, torch.Tensor]:
     for i in range(0, _NUM_IMAGES, batch_size):
         # 1バッチ分の画像をCLIPの前処理にかけてスタック(cifar10[j][0]は画像)
         batch = [clip_preprocess(cifar10[j][0]) for j in range(i, min(i + batch_size, _NUM_IMAGES))]
-        batch_tensor = torch.stack(batch)
+        batch_tensor = torch.stack(batch).to(device)
         with torch.no_grad():
             # 画像を意味ベクトル(512次元)に変換
             # 32枚の画像 => 512次元のベクトル(32, 512)
