@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
 const API_BASE = "http://localhost:8000";
-const BOX_COLOR = "#7c3aed";
+const COLORS = [
+  "#7c3aed", "#dc2626", "#059669", "#d97706", "#2563eb", "#db2777",
+];
 
 type Detection = {
   label: string;
@@ -9,7 +11,7 @@ type Detection = {
   box: [number, number, number, number];
 };
 
-function drawResultImage(imageUrl: string, top: Detection): Promise<string> {
+function drawResultImage(imageUrl: string, detections: Detection[]): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -19,26 +21,30 @@ function drawResultImage(imageUrl: string, top: Detection): Promise<string> {
       const ctx = canvas.getContext("2d")!;
       ctx.drawImage(img, 0, 0);
 
-      const [x1, y1, x2, y2] = top.box;
       const lineWidth = Math.max(2, img.naturalWidth / 300);
       const fontSize = Math.max(13, img.naturalWidth / 50);
 
-      ctx.strokeStyle = BOX_COLOR;
-      ctx.lineWidth = lineWidth;
-      ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+      detections.forEach((det, i) => {
+        const color = COLORS[i % COLORS.length];
+        const [x1, y1, x2, y2] = det.box;
 
-      const labelText = `${top.label}  ${(top.score * 100).toFixed(0)}%`;
-      ctx.font = `bold ${fontSize}px sans-serif`;
-      const textW = ctx.measureText(labelText).width;
-      const padX = 6;
-      const padY = 4;
-      const boxH = fontSize + padY * 2;
-      const labelY = y1 - boxH < 0 ? y1 + boxH : y1;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lineWidth;
+        ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
 
-      ctx.fillStyle = BOX_COLOR;
-      ctx.fillRect(x1, labelY - boxH, textW + padX * 2, boxH);
-      ctx.fillStyle = "#fff";
-      ctx.fillText(labelText, x1 + padX, labelY - padY);
+        const labelText = `${det.label}  ${(det.score * 100).toFixed(0)}%`;
+        ctx.font = `bold ${fontSize}px sans-serif`;
+        const textW = ctx.measureText(labelText).width;
+        const padX = 6;
+        const padY = 4;
+        const boxH = fontSize + padY * 2;
+        const labelY = y1 - boxH < 0 ? y1 + boxH : y1;
+
+        ctx.fillStyle = color;
+        ctx.fillRect(x1, labelY - boxH, textW + padX * 2, boxH);
+        ctx.fillStyle = "#fff";
+        ctx.fillText(labelText, x1 + padX, labelY - padY);
+      });
 
       resolve(canvas.toDataURL());
     };
@@ -62,8 +68,7 @@ export default function DetectPage() {
       setResultImageUrl(null);
       return;
     }
-    const top = detections.reduce((a, b) => (a.score >= b.score ? a : b));
-    drawResultImage(preview, top).then(setResultImageUrl);
+    drawResultImage(preview, detections).then(setResultImageUrl);
   }, [detections, preview]);
 
   function handleFile(f: File) {
@@ -108,10 +113,6 @@ export default function DetectPage() {
       setLoading(false);
     }
   }
-
-  const topDetection = detections.length > 0
-    ? detections.reduce((a, b) => (a.score >= b.score ? a : b))
-    : null;
 
   return (
     <>
@@ -163,32 +164,32 @@ export default function DetectPage() {
         </div>
       )}
 
-      {resultImageUrl && topDetection && (
+      {resultImageUrl && detections.length > 0 && (
         <div className="detect-result">
           <p className="results-title">
-            検出結果 — {detections.length} 件中 最高スコアを表示
+            検出結果 — {detections.length} 件
           </p>
           <img src={resultImageUrl} className="detect-canvas" alt="detection result" />
           <div className="detect-labels">
-            {detections.map((det, i) => (
-              <div
-                key={i}
-                className="detect-tag"
-                style={{
-                  borderColor: det === topDetection ? BOX_COLOR : "#334155",
-                  opacity: det === topDetection ? 1 : 0.5,
-                }}
-              >
-                <span
-                  className="detect-tag-dot"
-                  style={{ background: det === topDetection ? BOX_COLOR : "#475569" }}
-                />
-                <span className="detect-tag-label">{det.label}</span>
-                <span className="detect-tag-score">
-                  {(det.score * 100).toFixed(1)}%
-                </span>
-              </div>
-            ))}
+            {detections.map((det, i) => {
+              const color = COLORS[i % COLORS.length];
+              return (
+                <div
+                  key={i}
+                  className="detect-tag"
+                  style={{ borderColor: color }}
+                >
+                  <span
+                    className="detect-tag-dot"
+                    style={{ background: color }}
+                  />
+                  <span className="detect-tag-label">{det.label}</span>
+                  <span className="detect-tag-score">
+                    {(det.score * 100).toFixed(1)}%
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

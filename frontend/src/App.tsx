@@ -13,7 +13,7 @@ export default function App() {
           類似画像検索
         </NavLink>
         <NavLink to="/detect" className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
-          物体検出
+          物体検出(rectangle)
         </NavLink>
       </nav>
 
