@@ -6,7 +6,9 @@ import open_clip
 from app.utils import device
 from transformers import (
     AutoProcessor,
-    AutoModelForZeroShotObjectDetection
+    AutoModelForZeroShotObjectDetection,
+    SamModel,
+    SamProcessor,
 )
 
 IMAGENET_LABELS = (
@@ -98,4 +100,15 @@ grounding_model = (
         GROUNDING_DINO_MODEL_ID
     )
     .to(device)
+)
+
+# --- SAM モデル ---
+SAM_MODEL_ID = "facebook/sam-vit-base"
+
+sam_processor = SamProcessor.from_pretrained(SAM_MODEL_ID)
+
+sam_model = (
+    SamModel
+    .from_pretrained(SAM_MODEL_ID)
+    .to("cpu")
 )

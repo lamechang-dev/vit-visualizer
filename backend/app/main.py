@@ -5,10 +5,11 @@ import io
 import torch
 import torch.nn.functional as F
 import base64
+import numpy as np
 from app.model import cifar10_model, model, transform, IMAGENET_LABELS, clip_model, clip_tokenizer, CIFAR10_CLASSES
 from app.inference import get_embedding, get_clip_embedding, cifar10, _cifar10_embeddings
 from app.utils import device
-from app.model import grounding_processor, grounding_model
+from app.model import grounding_processor, grounding_model, sam_processor, sam_model
 
 app = FastAPI()
 
@@ -386,3 +387,108 @@ async def detect(
     return {
         "detections": detections
     }
+
+
+@app.post("/detect_with_pixel")
+async def detect_with_pixel(
+    file: UploadFile = File(...),
+    labels: str = Form("dog . cat . person .")
+):
+    contents = await file.read()
+
+    image = Image.open(
+        io.BytesIO(contents)
+    ).convert("RGB")
+
+    if not labels.rstrip().endswith("."):
+        labels = labels.rstrip() + " ."
+
+    # -------------------------
+    # Grounding DINO で bbox 検出
+    # -------------------------
+    inputs = grounding_processor(
+        images=image,
+        text=labels,
+        return_tensors="pt"
+    ).to(device)
+
+    with torch.no_grad():
+        outputs = grounding_model(**inputs)
+
+    results = (
+        grounding_processor
+        .post_process_grounded_object_detection(
+            outputs,
+            inputs.input_ids,
+            threshold=0.3,
+            text_threshold=0.3,
+            target_sizes=[image.size[::-1]]
+        )
+    )
+
+    result = results[0]
+
+    if len(result["boxes"]) == 0:
+        return {"segments": []}
+
+    # -------------------------
+    # SAM でピクセルマスクを生成
+    # -------------------------
+    # SAMはbox promptを [[x1, y1, x2, y2]] の形式で受け取る
+    boxes = result["boxes"].tolist()
+
+    sam_inputs = sam_processor(
+        images=image,
+        input_boxes=[[boxes]],
+        return_tensors="pt"
+    )
+
+    with torch.no_grad():
+        sam_outputs = sam_model(**sam_inputs)
+
+    # (1, num_boxes, 3, H, W) → best mask を選択
+    masks = sam_processor.post_process_masks(
+        sam_outputs.pred_masks.cpu(),
+        sam_inputs["original_sizes"].cpu(),
+        sam_inputs["reshaped_input_sizes"].cpu(),
+    )[0]
+    # shape: (num_boxes, 3, H, W) — 3候補のうちスコアが最高のものを選ぶ
+
+    iou_scores = sam_outputs.iou_scores[0]
+    # shape: (num_boxes, 3)
+
+    segments = []
+
+    image_np = np.array(image)
+
+    for i, (score, label, box) in enumerate(zip(
+        result["scores"],
+        result["labels"],
+        result["boxes"]
+    )):
+        best_mask_idx = int(iou_scores[i].argmax())
+        mask = masks[i][best_mask_idx].numpy().astype(bool)
+        # shape: (H, W)
+
+        # マスク領域だけ残して切り抜き（背景は白）
+        cropped = image_np.copy()
+        cropped[~mask] = 255
+
+        # bbox でトリミング
+        x1, y1, x2, y2 = [int(v) for v in box.tolist()]
+        x1, y1 = max(0, x1), max(0, y1)
+        x2, y2 = min(image_np.shape[1], x2), min(image_np.shape[0], y2)
+        cropped_region = cropped[y1:y2, x1:x2]
+
+        buf = io.BytesIO()
+        Image.fromarray(cropped_region).save(buf, format="PNG")
+        img_b64 = base64.b64encode(buf.getvalue()).decode()
+
+        segments.append({
+            "label": label,
+            "score": float(score),
+            "box": [float(v) for v in box.tolist()],
+            "image": f"data:image/png;base64,{img_b64}",
+        })
+
+    return {"segments": segments}
