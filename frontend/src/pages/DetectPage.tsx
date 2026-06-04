@@ -116,12 +116,16 @@ export default function DetectPage() {
 
   return (
     <>
-      <p className="subtitle">
+      <p className="text-sm text-slate-500 mb-9">
         画像とテキストクエリを入力して物体を検出（Grounding DINO）
       </p>
 
       <div
-        className={`drop-zone ${dragging ? "drag-over" : ""}`}
+        className={`relative w-full max-w-[480px] border-2 border-dashed rounded-2xl py-10 px-6 text-center cursor-pointer transition-[border-color,background] ${
+          dragging
+            ? "border-violet-600 bg-violet-600/[0.06]"
+            : "border-slate-700 hover:border-slate-600"
+        }`}
         onClick={() => inputRef.current?.click()}
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
@@ -131,60 +135,63 @@ export default function DetectPage() {
           ref={inputRef}
           type="file"
           accept="image/*"
-          className="file-input"
+          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
           onChange={onInputChange}
         />
-        <span className="upload-icon">🔍</span>
-        <p className="upload-hint">
-          <strong>クリックして選択</strong>、またはドラッグ&ドロップ
+        <span className="text-[2.5rem] block mb-3">🔍</span>
+        <p className="text-[0.9rem] text-slate-400">
+          <strong className="text-indigo-400">クリックして選択</strong>、またはドラッグ&ドロップ
         </p>
-        <p className="upload-sub">PNG / JPG / WEBP など</p>
+        <p className="text-[0.78rem] text-slate-600 mt-1.5">PNG / JPG / WEBP など</p>
       </div>
 
       {preview && (
-        <div className="preview-section">
-          <img src={preview} alt="プレビュー" className="preview-img" />
-          <div className="query-row">
+        <div className="flex flex-col items-center gap-3.5 mt-7">
+          <img src={preview} alt="プレビュー" className="w-40 h-40 object-cover rounded-xl border-2 border-slate-700" />
+          <div className="flex gap-2 w-full max-w-[480px]">
             <input
               type="text"
-              className="query-input"
+              className="flex-1 px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 text-[0.9rem] outline-none transition-[border-color] focus:border-violet-600 placeholder:text-slate-600"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="例: cat . dog . person ."
               onKeyDown={(e) => e.key === "Enter" && detect()}
             />
-            <button className="search-btn" onClick={detect} disabled={loading}>
-              {loading ? <><span className="spinner" />検出中...</> : "検出"}
+            <button
+              className="px-7 py-2.5 bg-linear-to-br from-violet-600 to-blue-600 text-white border-none rounded-lg text-[0.9rem] font-semibold cursor-pointer transition-[opacity,transform] flex items-center gap-1.5 hover:opacity-90 active:scale-[0.97] disabled:opacity-45 disabled:cursor-not-allowed"
+              onClick={detect}
+              disabled={loading}
+            >
+              {loading ? (
+                <><span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />検出中...</>
+              ) : "検出"}
             </button>
           </div>
-          <p className="query-hint">
-            ラベルは <code> . </code> で区切り、末尾に <code>.</code> を付けてください
+          <p className="text-[0.75rem] text-slate-600">
+            ラベルは <code className="bg-slate-800 px-[5px] py-px rounded text-indigo-400 font-mono"> . </code> で区切り、末尾に <code className="bg-slate-800 px-[5px] py-px rounded text-indigo-400 font-mono">.</code> を付けてください
           </p>
-          {error && <p className="error-msg">{error}</p>}
+          {error && <p className="text-[0.85rem] text-red-400">{error}</p>}
         </div>
       )}
 
       {resultImageUrl && detections.length > 0 && (
-        <div className="detect-result">
-          <p className="results-title">
+        <div className="flex flex-col items-center gap-4 mt-9 w-full max-w-[720px]">
+          <p className="text-[0.9rem] font-semibold text-slate-400 self-start tracking-wide uppercase">
             検出結果 — {detections.length} 件
           </p>
-          <img src={resultImageUrl} className="detect-canvas" alt="detection result" />
-          <div className="detect-labels">
+          <img src={resultImageUrl} className="w-full h-auto rounded-xl border-2 border-slate-700" alt="detection result" />
+          <div className="flex flex-wrap gap-2 justify-center">
             {detections.map((det, i) => {
               const color = COLORS[i % COLORS.length];
               return (
                 <div
                   key={i}
-                  className="detect-tag"
+                  className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 rounded-full px-3 py-[5px]"
                   style={{ borderColor: color }}
                 >
-                  <span
-                    className="detect-tag-dot"
-                    style={{ background: color }}
-                  />
-                  <span className="detect-tag-label">{det.label}</span>
-                  <span className="detect-tag-score">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
+                  <span className="text-[0.8rem] font-semibold text-slate-200">{det.label}</span>
+                  <span className="text-[0.75rem] text-violet-600 font-bold">
                     {(det.score * 100).toFixed(1)}%
                   </span>
                 </div>

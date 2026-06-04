@@ -426,6 +426,11 @@ async def detect_with_pixel(
         )
     )
 
+    # [{'scores': tensor([0.7818, 0.3842], device='mps:0'), 'boxes': tensor([[175.5537,  74.6405, 196.1769,  95.0299],
+    # [175.2701,  95.3338, 195.7438, 114.0614]], device='mps:0'), 'text_labels': ['duck', 'duck'], 'labels': ['duck', 'duck']}]
+    # box: [x1, y1, x2, y2]
+    print("results:", results)
+
     result = results[0]
 
     if len(result["boxes"]) == 0:
@@ -461,6 +466,10 @@ async def detect_with_pixel(
 
     image_np = np.array(image)
 
+    # (height, width, channel(RGB))
+    # (563, 844, 3)
+    print("image_np.shape", image_np.shape)
+
     for i, (score, label, box) in enumerate(zip(
         result["scores"],
         result["labels"],
@@ -471,7 +480,11 @@ async def detect_with_pixel(
         # shape: (H, W)
 
         # マスク領域だけ残して切り抜き（背景は白）
+        # 別のnumpy配列を作成
         cropped = image_np.copy()
+        # チルダ：NOT演算子
+        # ~mask: maskがFalseの部分をTrueに、Trueの部分をFalseに反転
+        # 該当のpixelを全て白に
         cropped[~mask] = 255
 
         # bbox でトリミング
