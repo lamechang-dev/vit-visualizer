@@ -15,7 +15,7 @@ device = (
 )
 
 class Frame(TypedDict):
-    inde: int
+    index: int
     timestamp_sec: float
     image: str
 

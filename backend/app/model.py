@@ -1,5 +1,6 @@
 import timm
 import torch
+from typing import Any
 from torchvision import transforms
 from torchvision.models import ResNet18_Weights
 import open_clip
@@ -11,7 +12,7 @@ from transformers import (
     SamProcessor,
 )
 
-IMAGENET_LABELS = (
+IMAGENET_LABELS: list[str] = (
     ResNet18_Weights.IMAGENET1K_V1.meta["categories"]
 )
 
@@ -24,7 +25,7 @@ IMAGENET_LABELS = (
 # 1000クラス分類のモデル。ImageNetの1000クラス分類モデル。
 # pretrained=True: ImageNetの重みを使用する
 # pretrained=Falseだった場合は、ランダムに初期化されたモデルが作成される。ImageNet関連の知識はなし
-model = timm.create_model(
+model: Any = timm.create_model(
     "vit_base_patch16_224",
     pretrained=True
 )
@@ -34,7 +35,7 @@ for block in model.blocks:
 
 model.eval()
 
-cifar10_model = timm.create_model(
+cifar10_model: Any = timm.create_model(
     "vit_tiny_patch16_224",
     pretrained=False,
     num_classes=10
@@ -54,7 +55,7 @@ cifar10_model.eval()
 # Linear(in_features=768, out_features=1000, bias=True)
 print(model.head)
 
-transform = transforms.Compose([
+transform: transforms.Compose = transforms.Compose([
     # モデルが要求するサイズにリサイズする
     transforms.Resize((224, 224)),
     # (H, W, C) → (C, H, W) に変換
@@ -68,15 +69,17 @@ transform = transforms.Compose([
 # CLIP ViT-B/32 を読み込む
 # CLIPモデル：テキストと画像を同じ埋め込み空間に射影するモデル
 # モデルの読み込み
+clip_model: Any
+clip_preprocess: Any
 clip_model, _, clip_preprocess = open_clip.create_model_and_transforms("ViT-B-32", pretrained="openai")
 # tokenizer：テキストをトークンに変換する
 # "a dog running" => ["a", "dog", "running"] => [15496, 16390, 3393](tokenID)
-clip_tokenizer = open_clip.get_tokenizer("ViT-B-32")
+clip_tokenizer: Any = open_clip.get_tokenizer("ViT-B-32")
 clip_model.eval()
 
 clip_model = clip_model.to(device)
 
-CIFAR10_CLASSES = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
+CIFAR10_CLASSES: list[str] = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
 
 # --- Zero-Shot Object Detection モデル ---
 # Grouding DINOは、物体検出モデル。画像中にある物体を検出する。
@@ -84,17 +87,17 @@ CIFAR10_CLASSES = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog
 # なので事前にテキストをembeddingに変換する必要がある。
 # YOLOは内部的にgog cat などのクラスを持っているが、Grouding DINOは持っていない。
 
-GROUNDING_DINO_MODEL_ID = (
+GROUNDING_DINO_MODEL_ID: str = (
     "IDEA-Research/grounding-dino-base"
 )
 
-grounding_processor = (
+grounding_processor: AutoProcessor = (
     AutoProcessor.from_pretrained(
         GROUNDING_DINO_MODEL_ID
     )
 )
 
-grounding_model = (
+grounding_model: AutoModelForZeroShotObjectDetection = (
     AutoModelForZeroShotObjectDetection
     .from_pretrained(
         GROUNDING_DINO_MODEL_ID
@@ -107,8 +110,5 @@ SAM_MODEL_ID = "facebook/sam-vit-base"
 
 sam_processor = SamProcessor.from_pretrained(SAM_MODEL_ID)
 
-sam_model = (
-    SamModel
-    .from_pretrained(SAM_MODEL_ID)
-    .to("cpu")
-)
+sam_model: SamModel = SamModel.from_pretrained(SAM_MODEL_ID)
+sam_model = sam_model.to("cpu") # type: ignore

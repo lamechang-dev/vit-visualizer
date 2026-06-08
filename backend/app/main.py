@@ -39,7 +39,7 @@ async def predict(file: UploadFile = File(...)):
     # [3, 224, 224] → [1, 3, 224, 224] に変換
     # ViTはバッチ(複数枚)で入力を受け取る設計
     # 1枚だけ渡す場合でも「1枚のバッチ」として包んであげる必要あり
-    x = transform(image).unsqueeze(0)
+    x = transform(image).unsqueeze(0) # type: ignore
     # torch.Size([1, 3, 224, 224])
     print(x.shape)
 
@@ -78,7 +78,7 @@ async def predict(file: UploadFile = File(...)):
     # cat: 2.1
     # car: -4.5
     # なのでdogを選ぶ
-    pred = IMAGENET_LABELS[logits.argmax().item()]
+    pred = IMAGENET_LABELS[int(logits.argmax().item())]
 
     return {
         "prediction_id": logits.argmax().item(),
@@ -95,7 +95,7 @@ async def predict_cifar10(
         io.BytesIO(contents)
     ).convert("RGB")
 
-    x = transform(image).unsqueeze(0).to(device)
+    x = transform(image).unsqueeze(0).to(device) # type: ignore
 
     with torch.no_grad():
         logits = cifar10_model(x)
@@ -351,7 +351,7 @@ async def detect(
     # 画像: resize => normalize => to tensor
     # テキスト: tokenizer => to tensor
     # return_tensors="pt" => PyTorchのテンソルに変換して、の指定
-    inputs = grounding_processor(
+    inputs = grounding_processor( # type: ignore
         images=image,
         text=labels,
         return_tensors="pt"
@@ -364,14 +364,14 @@ async def detect(
         # ViT patch embedding
         # text => Transformer token embedding
         # その後： Cross Attention
-        outputs = grounding_model(**inputs)
+        outputs = grounding_model(**inputs) # type: ignore
 
     # -------------------------
     # post process
     # -------------------------
     results = (
         grounding_processor
-        .post_process_grounded_object_detection(
+        .post_process_grounded_object_detection( # type: ignore
             outputs,
             inputs.input_ids,
             threshold=0.3,
@@ -420,18 +420,18 @@ async def detect_with_pixel(
     # -------------------------
     # Grounding DINO で bbox 検出
     # -------------------------
-    inputs = grounding_processor(
+    inputs = grounding_processor( # type: ignore
         images=image,
         text=labels,
         return_tensors="pt"
     ).to(device)
 
     with torch.no_grad():
-        outputs = grounding_model(**inputs)
+        outputs = grounding_model(**inputs) # type: ignore
 
     results = (
         grounding_processor
-        .post_process_grounded_object_detection(
+        .post_process_grounded_object_detection( # type: ignore
             outputs,
             inputs.input_ids,
             threshold=0.3,
