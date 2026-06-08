@@ -8,7 +8,7 @@ import base64
 import numpy as np
 from app.model import cifar10_model, model, transform, IMAGENET_LABELS, clip_model, clip_tokenizer, CIFAR10_CLASSES
 from app.inference import get_embedding, get_clip_embedding, cifar10, _cifar10_embeddings
-from app.utils import device
+from app.utils import device, extract_frames
 from app.model import grounding_processor, grounding_model, sam_processor, sam_model
 
 app = FastAPI()
@@ -314,6 +314,20 @@ async def similar_images(
 
     return {
         "results": results
+    }
+
+
+@app.post("/extract-frames")
+async def extract_frames_endpoint(
+    file: UploadFile = File(...),
+    fps: int = Form(5)
+):
+    contents = await file.read()
+    frames = extract_frames(contents, target_fps=fps)
+    return {
+        "total": len(frames),
+        "fps": fps,
+        "frames": frames,
     }
 
 
