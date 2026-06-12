@@ -6,10 +6,12 @@ import torch
 import torch.nn.functional as F
 import base64
 import numpy as np
+import cv2
 from app.model import cifar10_model, model, transform, IMAGENET_LABELS, clip_model, clip_tokenizer, CIFAR10_CLASSES
 from app.inference import get_embedding, get_clip_embedding, cifar10, _cifar10_embeddings
-from app.utils import device, extract_frames
-from app.model import grounding_processor, grounding_model, sam_processor, sam_model
+from app.utils.device import device
+from app.utils.video import extract_frames, extract_frames_as_pil
+from app.model import grounding_processor, grounding_model, sam_processor, sam_model, sam2_video_processor, sam2_video_model
 
 app = FastAPI()
 
@@ -22,7 +24,7 @@ app.add_middleware(
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
-    contents = await file.read()
+    contents = await    file.read()
 
     print("device:", device)
 
@@ -519,3 +521,69 @@ async def detect_with_pixel(
         })
 
     return {"segments": segments}
+
+
+@app.post("/track")
+async def track(
+    file: UploadFile = File(...),
+    x1: int = Form(...),
+    y1: int = Form(...),
+    x2: int = Form(...),
+    y2: int = Form(...),
+):
+    contents = await file.read()
+
+    pil_frames = extract_frames_as_pil(contents, max_frames=120)
+    if not pil_frames:
+        return {"frames": []}
+
+    # 最後のPIL imageを取得して、このディレクトリにpngとして保存
+    last_frame = pil_frames[-1]
+    last_frame.save("data/last_frame.png")
+
+    W, H = pil_frames[0].size  # PIL: (width, height)
+
+    inference_session = sam2_video_processor.init_video_session(
+        video=pil_frames,
+        inference_device="cpu",
+    )
+
+    sam2_video_processor.add_inputs_to_inference_session(
+        inference_session=inference_session,
+        frame_idx=0,
+        obj_ids=[1],
+        input_boxes=[[[x1, y1, x2, y2]]],
+    )
+
+
+    results = []
+
+    for frame_idx in range(len(pil_frames)):
+        with torch.no_grad():
+            output = sam2_video_model(inference_session, frame_idx=frame_idx)
+
+        if output.pred_masks is not None:
+            masks = sam2_video_processor.post_process_masks(
+                [output.pred_masks.cpu()],
+                original_sizes=[(H, W)],
+                binarize=True,
+            )
+            mask = masks[0][0][0].numpy().astype(np.uint8)
+
+            # ノイズ除去: 最大連結成分のみ残す
+            num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)  # type: ignore
+            if num_labels > 1:
+                largest = 1 + int(stats[1:, cv2.CC_STAT_AREA].argmax())  # type: ignore
+                mask = (labels == largest).astype(np.uint8)
+
+            ys, xs = np.where(mask)
+            if len(xs) > 0:
+                box = [int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())]
+            else:
+                box = [x1, y1, x2, y2]
+        else:
+            box = [x1, y1, x2, y2]
+
+        results.append({"frame": frame_idx, "box": box})
+
+    return {"frames": results}

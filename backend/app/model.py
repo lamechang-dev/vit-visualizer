@@ -4,12 +4,14 @@ from typing import Any
 from torchvision import transforms
 from torchvision.models import ResNet18_Weights
 import open_clip
-from app.utils import device
+from app.utils.device import device
 from transformers import (
     AutoProcessor,
     AutoModelForZeroShotObjectDetection,
     SamModel,
     SamProcessor,
+    Sam2VideoModel,
+    Sam2VideoProcessor,
 )
 
 IMAGENET_LABELS: list[str] = (
@@ -112,3 +114,11 @@ sam_processor = SamProcessor.from_pretrained(SAM_MODEL_ID)
 
 sam_model: SamModel = SamModel.from_pretrained(SAM_MODEL_ID)
 sam_model = sam_model.to("cpu") # type: ignore
+
+# --- SAM2 Video モデル ---
+SAM2_VIDEO_MODEL_ID = "facebook/sam2.1-hiera-tiny"
+
+sam2_video_processor: Sam2VideoProcessor = Sam2VideoProcessor.from_pretrained(SAM2_VIDEO_MODEL_ID)
+
+sam2_video_model: Sam2VideoModel = Sam2VideoModel.from_pretrained(SAM2_VIDEO_MODEL_ID)
+sam2_video_model.eval()

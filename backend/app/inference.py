@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from PIL import Image
 import torchvision.datasets as datasets
 from app.model import model, transform, clip_model, clip_preprocess
-from app.utils import device
+from app.utils.device import device
 
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "../../data")
 _CACHE_PATH = os.path.join(_DATA_DIR, "cifar10_clip_embeddings.pt")
@@ -13,11 +13,7 @@ _NUM_IMAGES = 500  # テストセット先頭500枚を使用
 # 画像 + ラベルのセット
 # 検索のたびにCLIP推論を行うのは非効率なので、事前に埋め込みを計算しておく
 # CIFAR-10は画像と10カテゴリ分類のデータセット
-
 cifar10 = datasets.CIFAR10(root=_DATA_DIR, train=False, download=True)
-
-(image, label) = cifar10[0]
-print(cifar10[0])
 
 def get_embedding(image: Image.Image) -> torch.Tensor:
     # [3, 224, 224] → [1, 3, 224, 224] に変換
