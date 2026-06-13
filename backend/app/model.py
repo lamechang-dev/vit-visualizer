@@ -1,6 +1,7 @@
 import timm
+from timm.models import VisionTransformer
 import torch
-from typing import Any
+from typing import Any, cast
 from torchvision import transforms
 from torchvision.models import ResNet18_Weights
 import open_clip
@@ -27,9 +28,12 @@ IMAGENET_LABELS: list[str] = (
 # 1000クラス分類のモデル。ImageNetの1000クラス分類モデル。
 # pretrained=True: ImageNetの重みを使用する
 # pretrained=Falseだった場合は、ランダムに初期化されたモデルが作成される。ImageNet関連の知識はなし
-model: Any = timm.create_model(
-    "vit_base_patch16_224",
-    pretrained=True
+model = cast(
+    VisionTransformer,
+    timm.create_model(
+        "vit_base_patch16_224",
+        pretrained=True
+    )
 )
 
 for block in model.blocks:
@@ -71,9 +75,7 @@ transform: transforms.Compose = transforms.Compose([
 # CLIP ViT-B/32 を読み込む
 # CLIPモデル：テキストと画像を同じ埋め込み空間に射影するモデル
 # モデルの読み込み
-clip_model: Any
-clip_preprocess: Any
-clip_model, _, clip_preprocess = open_clip.create_model_and_transforms("ViT-B-32", pretrained="openai")
+clip_model, _, _ = open_clip.create_model_and_transforms("ViT-B-32", pretrained="openai")
 # tokenizer：テキストをトークンに変換する
 # "a dog running" => ["a", "dog", "running"] => [15496, 16390, 3393](tokenID)
 clip_tokenizer: Any = open_clip.get_tokenizer("ViT-B-32")
@@ -89,9 +91,7 @@ CIFAR10_CLASSES: list[str] = ["airplane", "automobile", "bird", "cat", "deer", "
 # なので事前にテキストをembeddingに変換する必要がある。
 # YOLOは内部的にgog cat などのクラスを持っているが、Grouding DINOは持っていない。
 
-GROUNDING_DINO_MODEL_ID: str = (
-    "IDEA-Research/grounding-dino-base"
-)
+GROUNDING_DINO_MODEL_ID: str = "IDEA-Research/grounding-dino-base"
 
 grounding_processor: AutoProcessor = (
     AutoProcessor.from_pretrained(

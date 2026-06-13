@@ -1,6 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
+import asyncio
 import io
 import torch
 import torch.nn.functional as F
@@ -11,6 +12,7 @@ from app.model import cifar10_model, model, transform, IMAGENET_LABELS, clip_mod
 from app.inference import get_embedding, get_clip_embedding, cifar10, _cifar10_embeddings
 from app.utils.device import device
 from app.utils.video import extract_frames, extract_frames_as_pil
+from app.utils.image import read_upload_as_image
 from app.model import grounding_processor, grounding_model, sam_processor, sam_model, sam2_video_processor, sam2_video_model
 
 app = FastAPI()
@@ -24,7 +26,7 @@ app.add_middleware(
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
-    contents = await    file.read()
+    image = await read_upload_as_image(file)
 
     print("device:", device)
 
@@ -33,7 +35,6 @@ async def predict(file: UploadFile = File(...)):
     # channel 1 → G（緑の強さ）: 0〜255
     # channel 2 → B（青の強さ）: 0〜255
     # [height][width][channel] = [224][224][3]
-    image = Image.open(io.BytesIO(contents)).convert("RGB")
 
     print(image)
     # <PIL.Image.Image image mode=RGB size=844x563 at 0x10E50F4D0>
@@ -91,11 +92,7 @@ async def predict(file: UploadFile = File(...)):
 async def predict_cifar10(
     file: UploadFile = File(...)
 ):
-    contents = await file.read()
-
-    image = Image.open(
-        io.BytesIO(contents)
-    ).convert("RGB")
+    image = await read_upload_as_image(file)
 
     x = transform(image).unsqueeze(0).to(device) # type: ignore
 
@@ -132,11 +129,10 @@ async def similarity(
     file1: UploadFile = File(...),
     file2: UploadFile = File(...)
 ):
-    contents1 = await file1.read()
-    contents2 = await file2.read()
-
-    image1 = Image.open(io.BytesIO(contents1)).convert("RGB")
-    image2 = Image.open(io.BytesIO(contents2)).convert("RGB")
+    image1, image2 = await asyncio.gather(
+        read_upload_as_image(file1),
+        read_upload_as_image(file2),
+    )
 
     emb1 = get_embedding(image1)
     emb2 = get_embedding(image2)
@@ -170,11 +166,7 @@ async def multi_label(
         "building",
     ]
 
-    contents = await file.read()
-
-    image = Image.open(
-        io.BytesIO(contents)
-    ).convert("RGB")
+    image = await read_upload_as_image(file)
 
     # -------------------------
     # 画像embedding
@@ -271,9 +263,7 @@ async def similar_images(
     file: UploadFile = File(...),
     top_k: int = 5
 ):
-    contents = await file.read()
-
-    image = Image.open(io.BytesIO(contents)).convert("RGB")
+    image = await read_upload_as_image(file)
 
     # アップロード画像のembedding
     query_emb = get_clip_embedding(image)
@@ -338,11 +328,7 @@ async def detect(
     file: UploadFile = File(...),
     labels: str = Form("dog . cat . person .")
 ):
-    contents = await file.read()
-
-    image = Image.open(
-        io.BytesIO(contents)
-    ).convert("RGB")
+    image = await read_upload_as_image(file)
 
     if not labels.rstrip().endswith("."):
         labels = labels.rstrip() + " ."
@@ -410,11 +396,7 @@ async def detect_with_pixel(
     file: UploadFile = File(...),
     labels: str = Form("dog . cat . person .")
 ):
-    contents = await file.read()
-
-    image = Image.open(
-        io.BytesIO(contents)
-    ).convert("RGB")
+    image = await read_upload_as_image(file)
 
     if not labels.rstrip().endswith("."):
         labels = labels.rstrip() + " ."
