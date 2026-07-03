@@ -75,7 +75,7 @@ transform: transforms.Compose = transforms.Compose([
 # CLIP ViT-B/32 を読み込む
 # CLIPモデル：テキストと画像を同じ埋め込み空間に射影するモデル
 # モデルの読み込み
-clip_model, _, _ = open_clip.create_model_and_transforms("ViT-B-32", pretrained="openai")
+clip_model, _, clip_preprocess = open_clip.create_model_and_transforms("ViT-B-32", pretrained="openai")
 # tokenizer：テキストをトークンに変換する
 # "a dog running" => ["a", "dog", "running"] => [15496, 16390, 3393](tokenID)
 clip_tokenizer: Any = open_clip.get_tokenizer("ViT-B-32")
