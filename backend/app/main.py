@@ -56,6 +56,7 @@ async def predict(file: UploadFile = File(...)):
         # [1, 1000]
         logits: torch.Tensor = model(x)
 
+    # ここからはテスト実装 ------------------------------------------------------------
 
     # forward_features: head直前で止める。Encoderの出力を取得する。
     # Encoderの中で Self-Attention & MLP & LayerNormが繰り替えされる
@@ -68,13 +69,13 @@ async def predict(file: UploadFile = File(...)):
     # [768]
     print("cls.shape:", cls.shape)
 
+    # テスト実装ここまで ------------------------------------------------------------
+
     # 確率のトップ10のくらすIDと確率を表示
     # softmax(): 確率分布に変換
     softmax = logits.softmax(dim=-1)
-    topk = softmax[0].topk(10)
-    indices = topk.indices.tolist()
-    values = topk.values.tolist()
-    print("logits トップ10:", indices, values)
+    indices, values = softmax[0].topk(10)
+    print("logits トップ10:", indices.tolist(), values.tolist())
 
     # 一番logitsが大きいものを選ぶ
     # dog: 12.3
@@ -94,22 +95,18 @@ async def predict_cifar10(
 ):
     image = await read_upload_as_image(file)
 
+    # [1, 3, 224, 224]
     x = transform(image).unsqueeze(0).to(device) # type: ignore
 
     with torch.no_grad():
+        # [1, 10] num_classes=10だから
         logits = cifar10_model(x)
-
-    print("logits.shape:", logits.shape)
-    # [1, 10]
 
     probs = logits.softmax(dim=-1)
 
-    topk = probs[0].topk(10)
+    indices, values = probs[0].topk(10)
 
-    indices = topk.indices.tolist()
-    values = topk.values.tolist()
-
-    print("top10:", indices, values)
+    print("top10:", indices.tolist(), values.tolist())
 
     pred_id = logits.argmax(dim=-1).item()
 
